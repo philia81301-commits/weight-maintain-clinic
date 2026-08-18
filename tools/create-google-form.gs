@@ -285,12 +285,18 @@ function buildHistorySheet(ss, respName, C) {
   var chart = sh.newChart()
     .asLineChart()
     .addRange(sh.getRange(5, 1, LAST - 4, 2))
-    .setPosition(2, 6, 0, 0)
+    // 放在 K 欄：A~I 是資料與計算欄，圖表壓在 F 欄會擋住
+    // 「與前次差／與首次差／累積減重%」三欄（2026-08-18 實際發生）
+    .setPosition(2, 11, 0, 0)
     .setOption('title', '體重變化歷程')
     .setOption('legend', { position: 'none' })
-    .setOption('width', 520)
-    .setOption('height', 300)
-    .setOption('pointSize', 5)
+    .setOption('width', 560)
+    .setOption('height', 320)
+    .setOption('pointSize', 6)
+    // Y 軸不從 0 起算：維持期的變化常只有幾公斤，
+    // 從 0 畫會壓成一條平線，看不出成效
+    .setOption('vAxis', { viewWindowMode: 'pretty', title: '體重 (kg)' })
+    .setOption('hAxis', { title: '回診日期' })
     .build();
   sh.insertChart(chart);
 }
