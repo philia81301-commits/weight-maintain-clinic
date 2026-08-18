@@ -35,6 +35,7 @@ function itemSpecs() {
     // --- 基本資料 ---
     { key: 'name',       type: 'text',     title: '姓名' },
     { key: 'birthYear',  type: 'text',     title: '西元出生年' },
+    { key: 'visitDate',  type: 'date',     title: '回診日期' },
 
     // --- 身體測量 ---
     { key: 'height',     type: 'text',     title: '身高(cm)' },
@@ -91,6 +92,9 @@ function buildAll() {
     } else if (spec.type === 'checkbox') {
       item = form.addCheckboxItem();
       item.setChoiceValues(spec.choices);
+    } else if (spec.type === 'date') {
+      item = form.addDateItem();
+      item.setIncludesYear(true);
     }
     item.setTitle(spec.title);
     item.setRequired(false); // 見檔頭 [全部題目不設必填]
@@ -161,6 +165,8 @@ function entryIds(form) {
       } else if (t === FormApp.ItemType.CHECKBOX) {
         resp = item.asCheckboxItem()
                    .createResponse([item.asCheckboxItem().getChoices()[0].getValue()]);
+      } else if (t === FormApp.ItemType.DATE) {
+        resp = item.asDateItem().createResponse(new Date(2026, 7, 18));
       }
     } catch (e) {
       resp = null;
@@ -208,6 +214,19 @@ function tsCol(C) {
   return C['Timestamp'] || C['時間戳記'] || 1;
 }
 
+/**
+ * 回診日期的取值運算式。
+ * 優先用「回診日期」欄（人工填的實際回診日），該欄空白才退回 Timestamp（送出時間）。
+ * 補舊資料時全部都是同一天送出，只看 Timestamp 會讓歷程變成一條垂直線。
+ */
+function dateExpr(R, C, abs) {
+  var d = function (L) { return abs ? (R + '$' + L + '$2:$' + L) : (R + L + '2:' + L); };
+  var TS = d(colLetter(tsCol(C)));
+  if (!C['回診日期']) return TS;
+  var DT = d(colLetter(C['回診日期']));
+  return 'IF(' + DT + '="",' + TS + ',' + DT + ')';
+}
+
 /** 個案歷程：輸入姓名＋出生年，列出該人每次回診與體重變化，附折線圖。 */
 function buildHistorySheet(ss, respName, C) {
   var sh = ss.insertSheet('個案歷程');
@@ -215,11 +234,11 @@ function buildHistorySheet(ss, respName, C) {
   var LAST = 105; // 最多顯示 100 次回診
 
   var col = function (title) { return colLetter(need(C, title)); };
-  var TS    = colLetter(tsCol(C));
   var NAME  = col('姓名'),      BY    = col('西元出生年');
   var WT    = col('體重(kg)'),  WAIST = col('腰圍(cm)'), GRADE = col('BMI分級');
   var DRUG  = col('目前用藥'),  DOSE  = col('藥物劑量');
   var rng = function (L) { return R + L + '2:' + L; };
+  var DATE = dateExpr(R, C, false);
 
   sh.getRange('A1').setValue('個案歷程查詢').setFontWeight('bold').setFontSize(13);
   sh.getRange('A2').setValue('姓名');
@@ -227,6 +246,8 @@ function buildHistorySheet(ss, respName, C) {
   sh.getRange('A2:A3').setFontWeight('bold');
   sh.getRange('B2:B3').setBackground('#fff2cc').setBorder(true, true, true, true, false, false);
   sh.getRange('D2').setValue('← 在黃色格子填入要查的個案（出生年用來區分同名不同人）')
+    .setFontColor('#888');
+  sh.getRange('D3').setValue('日期以「回診日期」欄為準，該欄空白才退用送出時間')
     .setFontColor('#888');
 
   var headers = ['回診日期', '體重(kg)', '腰圍(cm)', 'BMI分級', '目前用藥', '藥物劑量',
@@ -236,7 +257,7 @@ function buildHistorySheet(ss, respName, C) {
 
   sh.getRange('A6').setFormula(
     '=IF($B$2="","",IFERROR(SORT(FILTER({' +
-      rng(TS) + ',' + rng(WT) + ',' + rng(WAIST) + ',' +
+      DATE + ',' + rng(WT) + ',' + rng(WAIST) + ',' +
       rng(GRADE) + ',' + rng(DRUG) + ',' + rng(DOSE) + '},' +
       'TRIM(' + rng(NAME) + ')=TRIM($B$2),' +
       'TRIM(' + rng(BY) + ')&""=TRIM($B$3)&""' +
@@ -289,33 +310,34 @@ function buildSummarySheet(ss, respName, C) {
   sh.getRange(1, 1, 1, headers.length).setValues([headers])
     .setFontWeight('bold').setBackground('#d9e2f3');
 
-  // QUERY 用 ColN 指定欄位（N＝在查詢範圍內的欄序，範圍自 A 起算故等同欄號）
+  // QUERY 只負責分組與計數（QUERY 無法在欄位上套 IF，故日期改用下方陣列公式取）
   // label 全部設成 '' 才不會多出一列 QUERY 自動表頭
   sh.getRange('A2').setFormula(
     '=IFERROR(QUERY(' + R + 'A2:' + lastLetter + ',' +
-    '"select Col' + NAME + ', Col' + BY + ', count(Col' + TS + '), ' +
-    'min(Col' + TS + '), max(Col' + TS + ') ' +
+    '"select Col' + NAME + ', Col' + BY + ', count(Col' + TS + ') ' +
     'where Col' + NAME + ' is not null group by Col' + NAME + ', Col' + BY + ' ' +
     'order by max(Col' + TS + ') desc ' +
-    "label Col" + NAME + " '', Col" + BY + " '', count(Col" + TS + ") '', " +
-    "min(Col" + TS + ") '', max(Col" + TS + ") ''\"" +
+    "label Col" + NAME + " '', Col" + BY + " '', count(Col" + TS + ") ''\"" +
     '),"")'
   );
 
-  // 首次／最新體重用 SORT+INDEX 取，不用時間戳記字串比對（datetime 比對容易踩精度問題）
-  var tsL = colLetter(TS), wtL = colLetter(WT), nameL = colLetter(NAME), byL = colLetter(BY);
-  var pick = function (asc) {
-    return '=IF($A2="","",IFERROR(INDEX(SORT(FILTER({' +
-      R + '$' + tsL + '$2:$' + tsL + ',' + R + '$' + wtL + '$2:$' + wtL + '},' +
-      'TRIM(' + R + '$' + nameL + '$2:$' + nameL + ')=TRIM($A2),' +
-      'TRIM(' + R + '$' + byL + '$2:$' + byL + ')&""=TRIM($B2)&""' +
+  // 首次／最新的日期與體重：依「回診日期」排序後取頭尾
+  // 不用 QUERY 的 min/max：那是 Timestamp（送出時間），補舊資料時會全部變成今天
+  var DATE = dateExpr(R, C, true);
+  var A = function (L) { return R + '$' + L + '$2:$' + L; };
+  var pick = function (asc, second) {
+    return '=IF($A2="","",IFERROR(INDEX(SORT(FILTER({' + DATE + ',' + second + '},' +
+      'TRIM(' + A(colLetter(NAME)) + ')=TRIM($A2),' +
+      'TRIM(' + A(colLetter(BY)) + ')&""=TRIM($B2)&""' +
       '),1,' + asc + '),1,2),""))';
   };
-  sh.getRange('F2').setFormula(pick('TRUE'));
-  sh.getRange('G2').setFormula(pick('FALSE'));
+  sh.getRange('D2').setFormula(pick('TRUE',  DATE));            // 首次日期
+  sh.getRange('E2').setFormula(pick('FALSE', DATE));            // 最新日期
+  sh.getRange('F2').setFormula(pick('TRUE',  A(colLetter(WT)))); // 首次體重
+  sh.getRange('G2').setFormula(pick('FALSE', A(colLetter(WT)))); // 最新體重
   sh.getRange('H2').setFormula('=IF(OR($A2="",$F2="",$G2=""),"",$G2-$F2)');
   sh.getRange('I2').setFormula('=IF(OR($A2="",$F2="",$F2=0),"",($F2-$G2)/$F2)');
-  sh.getRange('F2:I2').copyTo(sh.getRange(3, 6, LAST - 2, 4));
+  sh.getRange('D2:I2').copyTo(sh.getRange(3, 4, LAST - 2, 6));
 
   sh.getRange(2, 4, LAST - 1, 2).setNumberFormat('yyyy/mm/dd');
   sh.getRange(2, 6, LAST - 1, 3).setNumberFormat('0.0');
@@ -416,4 +438,70 @@ function reorderFields() {
   buildHistorySheet(ss, respName, C);
   buildSummarySheet(ss, respName, C);
   Logger.log('分析分頁已依實際欄位順序重建完成。');
+}
+
+/**
+ * 在既有表單加上「回診日期」題，並重建兩張分析分頁。
+ *
+ * 為什麼需要這題：Google 表單只會記錄「送出時間」。補過去的回診紀錄時全部都是今天送出，
+ * 歷程會變成同一天的一堆點，排序、與前次差、折線圖全部失去意義。
+ *
+ * 日期題的送出參數不是單一 entry.N，本函式會把實際參數名稱印出來，不要用猜的。
+ */
+function addVisitDateField() {
+  var FORM_ID_EDIT = '19uUl-kPa90fyVJaUasqjStXSNXUfCeGLyJj_5ZXT-e4';
+  var SS_ID        = '1QYUX1yrZmjbbKkhb44i1ZA2D3liKAs0VL0ID_OEy_2E';
+
+  var form = FormApp.openById(FORM_ID_EDIT);
+
+  var exist = form.getItems().filter(function (it) { return it.getTitle() === '回診日期'; });
+  var item;
+  if (exist.length) {
+    item = exist[0];
+    Logger.log('「回診日期」已存在，不重複新增。');
+  } else {
+    item = form.addDateItem();
+    item.setTitle('回診日期').setIncludesYear(true).setRequired(false);
+    item.setHelpText('實際回診日期。補舊資料時務必填寫，否則會被當成今天。');
+    // 移到「西元出生年」之後，手動填表時順手
+    var idx = form.getItems().map(function (it) { return it.getTitle(); }).indexOf('西元出生年');
+    if (idx !== -1) form.moveItem(item, idx + 1);
+    Logger.log('已新增「回診日期」題。');
+  }
+
+  // ---- 印出這題的實際送出參數（日期題會拆成 _year / _month / _day）----
+  var resp = form.createResponse()
+                 .withItemResponse(item.asDateItem().createResponse(new Date(2026, 7, 18)));
+  var url = resp.toPrefilledUrl();
+  Logger.log('回診日期題的預填網址：');
+  Logger.log(url);
+  var q = url.split('?')[1] || '';
+  Logger.log('--- 參數逐項（貼這段回來）---');
+  q.split('&').forEach(function (kv) {
+    if (kv.indexOf('entry.') === 0) Logger.log('  ' + decodeURIComponent(kv));
+  });
+  Logger.log('-----------------------------');
+
+  Logger.log('表單題目順序：' +
+    form.getItems().map(function (it) { return it.getTitle(); }).join(' → '));
+
+  // ---- 重建分析分頁 ----
+  var ss = SpreadsheetApp.openById(SS_ID);
+  var respSheet = findResponseSheet(ss);
+  var respName = respSheet.getName();
+  var C = colMap(respSheet);
+  Logger.log('回應分頁「' + respName + '」欄位：');
+  Object.keys(C).forEach(function (k) { Logger.log('  ' + colLetter(C[k]) + ' 欄 = ' + k); });
+  if (!C['回診日期']) {
+    Logger.log('！回應分頁還沒出現「回診日期」欄。Google 有時要幾秒才補上表頭，');
+    Logger.log('！請等一下再單獨執行 repair() 重建分頁，否則歷程仍會用送出時間。');
+  }
+
+  ['個案歷程', '個案總表'].forEach(function (n) {
+    var old = ss.getSheetByName(n);
+    if (old) ss.deleteSheet(old);
+  });
+  buildHistorySheet(ss, respName, C);
+  buildSummarySheet(ss, respName, C);
+  Logger.log('分析分頁重建完成。');
 }

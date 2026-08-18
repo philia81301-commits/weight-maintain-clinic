@@ -80,6 +80,17 @@
     </div>
   </div>
 
+  <div class="field-row">
+    <div class="field-group">
+      <label>回診日期 <span class="req">*</span></label>
+      <input type="date" id="visitDate">
+    </div>
+    <div class="field-group">
+      <label>&nbsp;</label>
+      <div class="inline-tip" style="margin:0">補過去的紀錄時請改成<strong>實際回診日</strong>，否則歷程會全部擠在今天。</div>
+    </div>
+  </div>
+
   <hr class="section-divider">
   <h2>身體測量</h2>
   <div class="field-row-3">
@@ -257,7 +268,10 @@ const ENTRY = {
   exDuration:  'entry.1921339078',   // 每次運動時間
   exType:      'entry.443472723',    // 運動類型
   drug:        'entry.133923952',    // 目前用藥
-  dose:        'entry.429082813'     // 藥物劑量
+  dose:        'entry.429082813',    // 藥物劑量
+  // 日期題的送出參數會拆成 _year / _month / _day，此處只放基底編號。
+  // 執行 create-google-form.gs 的 addVisitDateField() 後，把印出的編號填進來。
+  visitDate:   'REPLACE_visitDate'   // 回診日期
 };
 
 /* 各藥劑量字典。null = 改用自由文字輸入（併用／轉換情境無法列舉）。 */
@@ -360,6 +374,7 @@ function collect() {
   const exercise = radioVal('exercise');
 
   return {
+    visitDate:   val('visitDate'),
     name:        val('name'),
     birthYear:   val('birthYear'),
     weight:      val('weight'),
@@ -386,6 +401,7 @@ function validate(d) {
     if (focusId) { const el = document.getElementById(focusId); if (el) el.focus(); }
     return false;
   };
+  if (!d.visitDate) return fail('請選擇回診日期', 'visitDate');
   if (!d.name)      return fail('請填寫姓名', 'name');
   if (!d.birthYear) return fail('請填寫西元出生年（歷程要用它區分同名個案）', 'birthYear');
   const by = parseInt(d.birthYear, 10);
@@ -413,9 +429,8 @@ let noteSubmitted = false;
 function generateNote() {
   noteSubmitted = false;
   const d = collect();
-  const now = new Date();
-  const dateStr = now.getFullYear() + '/' + String(now.getMonth() + 1).padStart(2, '0')
-                + '/' + String(now.getDate()).padStart(2, '0');
+  // 貼稿日期用回診日期（補舊資料時才不會寫成今天）
+  const dateStr = d.visitDate ? d.visitDate.replace(/-/g, '/') : '（未選日期）';
 
   const lines = [];
   lines.push('【減重維持回診】' + dateStr);
@@ -477,6 +492,7 @@ function clearForm() {
   document.getElementById('doseText').style.display = 'none';
   document.getElementById('dose').style.display = 'block';
   onDrugChange();
+  setToday();
   noteSubmitted = false;
 }
 
@@ -506,6 +522,15 @@ function buildFormParams() {
   set('drug', d.drug);
   set('dose', d.dose);
 
+  // 日期題不是單一 entry.N，要拆成三個參數送
+  if (d.visitDate && ENTRY.visitDate.indexOf('REPLACE_') !== 0) {
+    var parts = d.visitDate.split('-');           // YYYY-MM-DD
+    var base = ENTRY.visitDate;
+    params.set(base + '_year',  parts[0]);
+    params.set(base + '_month', String(parseInt(parts[1], 10)));
+    params.set(base + '_day',   String(parseInt(parts[2], 10)));
+  }
+
   params.set('fvv', '1');
   params.set('submissionTimestamp', '-1');
   return { params, name: d.name };
@@ -518,7 +543,19 @@ function buildFormParams() {
 function copyAndSubmit() {
   copyNote();
 
-  const unset = Object.keys(ENTRY).filter(k => String(ENTRY[k]).indexOf('REPLACE_') === 0);
+  // 回診日期尚未接上表單時，只允許送「今天」的紀錄。
+  // 否則補舊資料會被 Google 記成送出當天，歷程整條錯掉且不會報錯。
+  const todayStr = new Date().toLocaleDateString('sv-SE');  // YYYY-MM-DD
+  if (ENTRY.visitDate.indexOf('REPLACE_') === 0 && val('visitDate') && val('visitDate') !== todayStr) {
+    alert(['回診日期欄位還沒接上 Google 表單，現在只能送出「今天」的紀錄。', '',
+           '你選的是 ' + val('visitDate') + '，這筆若送出會被記成 ' + todayStr + '，歷程會算錯。', '',
+           '請先執行 create-google-form.gs 的 addVisitDateField()，'
+           + '把日期題的編號填進 ENTRY.visitDate。'].join(String.fromCharCode(10)));
+    return;
+  }
+
+  const unset = Object.keys(ENTRY).filter(
+    k => k !== 'visitDate' && String(ENTRY[k]).indexOf('REPLACE_') === 0);
   if (FORM_ID.indexOf('REPLACE_') === 0 || unset.length) {
     alert('尚未設定表單對應，無法送出。\n\n請先執行 create-form.gs 的 buildAll()，'
         + '把執行紀錄印出的 FORM_ID 與 ENTRY 貼進本檔。\n\n未設定：'
@@ -542,7 +579,12 @@ function copyAndSubmit() {
     .catch(() => { alert('送出失敗（可能是網路問題）。貼稿已複製，資料未送出，請稍後再試。'); });
 }
 
+function setToday() {
+  document.getElementById('visitDate').value = new Date().toLocaleDateString('sv-SE');
+}
+
 onDrugChange();
+setToday();
 </script>
 </body>
 </html>
