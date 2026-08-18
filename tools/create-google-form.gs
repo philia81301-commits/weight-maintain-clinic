@@ -463,10 +463,17 @@ function addVisitDateField() {
     item = form.addDateItem();
     item.setTitle('回診日期').setIncludesYear(true).setRequired(false);
     item.setHelpText('實際回診日期。補舊資料時務必填寫，否則會被當成今天。');
-    // 移到「西元出生年」之後，手動填表時順手
-    var idx = form.getItems().map(function (it) { return it.getTitle(); }).indexOf('西元出生年');
-    if (idx !== -1) form.moveItem(item, idx + 1);
     Logger.log('已新增「回診日期」題。');
+  }
+
+  // 移到「西元出生年」之後，手動填表時順手。
+  // moveItem 的多載只吃 (Item, Integer) 或 (Integer, Integer)；addDateItem() 回傳的是
+  // DateItem（子型別），直接傳會拋 "don't match the method signature"，故一律用索引。
+  // 放在 if/else 之外，重跑時也會把位置補正。
+  var afterIdx = form.getItems().map(function (it) { return it.getTitle(); }).indexOf('西元出生年');
+  if (afterIdx !== -1 && item.getIndex() !== afterIdx + 1) {
+    form.moveItem(item.getIndex(), afterIdx + 1);
+    Logger.log('已把「回診日期」移到「西元出生年」之後。');
   }
 
   // ---- 印出這題的實際送出參數（日期題會拆成 _year / _month / _day）----
