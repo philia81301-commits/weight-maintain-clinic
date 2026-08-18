@@ -37,8 +37,8 @@ function itemSpecs() {
     { key: 'birthYear',  type: 'text',     title: '西元出生年' },
 
     // --- 身體測量 ---
-    { key: 'weight',     type: 'text',     title: '體重(kg)' },
     { key: 'height',     type: 'text',     title: '身高(cm)' },
+    { key: 'weight',     type: 'text',     title: '體重(kg)' },
     { key: 'bmiGrade',   type: 'radio',    title: 'BMI分級',
       choices: ['小於24但腰圍超標', '24-27', '27-30', '30-35', '大於35'] },
     { key: 'waist',      type: 'text',     title: '腰圍(cm)' },
@@ -103,10 +103,12 @@ function buildAll() {
 
   // setDestination 之後才會出現回應分頁，重新開檔才抓得到
   ss = SpreadsheetApp.openById(ss.getId());
-  var respName = findResponseSheet(ss).getName();
+  var respSheet = findResponseSheet(ss);
+  var respName = respSheet.getName();
+  var C = colMap(respSheet);
 
-  buildHistorySheet(ss, respName);
-  buildSummarySheet(ss, respName);
+  buildHistorySheet(ss, respName, C);
+  buildSummarySheet(ss, respName, C);
   removeDefaultSheet(ss, respName);
 
   // ---- 搬進「門診工具-正式運作中」----
@@ -171,11 +173,53 @@ function entryIds(form) {
   });
 }
 
+/**
+ * 依表頭文字解析欄位位置，回傳 {題目: 欄號(1-based)}。
+ * 公式一律透過這張表產生，不寫死欄位字母——表單題目順序調整時才不會整排錯位
+ * （2026-08-18 把身高調到體重之前時導入）。
+ */
+function colMap(respSheet) {
+  var headers = respSheet.getRange(1, 1, 1, respSheet.getLastColumn()).getValues()[0];
+  var map = {};
+  headers.forEach(function (h, i) {
+    var name = String(h).trim();
+    if (name) map[name] = i + 1;
+  });
+  return map;
+}
+
+/** 欄號轉欄位字母（1 → A、27 → AA）。 */
+function colLetter(n) {
+  var s = '';
+  while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - m - 1) / 26; }
+  return s;
+}
+
+/** 從欄位對照表取欄號，找不到就明確報錯，不要讓公式默默指到錯的欄。 */
+function need(C, title) {
+  if (!C[title]) {
+    throw new Error('回應分頁找不到欄位「' + title + '」。目前表頭：' + Object.keys(C).join('、'));
+  }
+  return C[title];
+}
+
+/** 時間戳記欄的標題會隨試算表語系不同（英文 Timestamp／中文 時間戳記）。 */
+function tsCol(C) {
+  return C['Timestamp'] || C['時間戳記'] || 1;
+}
+
 /** 個案歷程：輸入姓名＋出生年，列出該人每次回診與體重變化，附折線圖。 */
-function buildHistorySheet(ss, respName) {
+function buildHistorySheet(ss, respName, C) {
   var sh = ss.insertSheet('個案歷程');
   var R = "'" + respName + "'!";
   var LAST = 105; // 最多顯示 100 次回診
+
+  var col = function (title) { return colLetter(need(C, title)); };
+  var TS    = colLetter(tsCol(C));
+  var NAME  = col('姓名'),      BY    = col('西元出生年');
+  var WT    = col('體重(kg)'),  WAIST = col('腰圍(cm)'), GRADE = col('BMI分級');
+  var DRUG  = col('目前用藥'),  DOSE  = col('藥物劑量');
+  var rng = function (L) { return R + L + '2:' + L; };
 
   sh.getRange('A1').setValue('個案歷程查詢').setFontWeight('bold').setFontSize(13);
   sh.getRange('A2').setValue('姓名');
@@ -190,12 +234,12 @@ function buildHistorySheet(ss, respName) {
   sh.getRange(5, 1, 1, headers.length).setValues([headers])
     .setFontWeight('bold').setBackground('#d9e2f3');
 
-  // 原始資料：依姓名＋出生年篩出、按日期升冪
   sh.getRange('A6').setFormula(
     '=IF($B$2="","",IFERROR(SORT(FILTER({' +
-      R + 'A2:A,' + R + 'D2:D,' + R + 'G2:G,' + R + 'F2:F,' + R + 'N2:N,' + R + 'O2:O},' +
-      'TRIM(' + R + 'B2:B)=TRIM($B$2),' +
-      'TRIM(' + R + 'C2:C)&""=TRIM($B$3)&""' +
+      rng(TS) + ',' + rng(WT) + ',' + rng(WAIST) + ',' +
+      rng(GRADE) + ',' + rng(DRUG) + ',' + rng(DOSE) + '},' +
+      'TRIM(' + rng(NAME) + ')=TRIM($B$2),' +
+      'TRIM(' + rng(BY) + ')&""=TRIM($B$3)&""' +
     '),1,TRUE),""))'
   );
 
@@ -231,30 +275,40 @@ function buildHistorySheet(ss, respName) {
 }
 
 /** 個案總表：每人一列，首次／最新體重、總變化、回診次數。 */
-function buildSummarySheet(ss, respName) {
+function buildSummarySheet(ss, respName, C) {
   var sh = ss.insertSheet('個案總表');
   var R = "'" + respName + "'!";
   var LAST = 400;
+
+  var TS   = tsCol(C);
+  var NAME = need(C, '姓名'), BY = need(C, '西元出生年'), WT = need(C, '體重(kg)');
+  var lastLetter = colLetter(Object.keys(C).length);
 
   var headers = ['姓名', '西元出生年', '回診次數', '首次日期', '最新日期',
                  '首次體重(kg)', '最新體重(kg)', '總變化(kg)', '累積減重(%)'];
   sh.getRange(1, 1, 1, headers.length).setValues([headers])
     .setFontWeight('bold').setBackground('#d9e2f3');
 
+  // QUERY 用 ColN 指定欄位（N＝在查詢範圍內的欄序，範圍自 A 起算故等同欄號）
   // label 全部設成 '' 才不會多出一列 QUERY 自動表頭
   sh.getRange('A2').setFormula(
-    '=IFERROR(QUERY(' + R + 'A2:O,' +
-    '"select Col2, Col3, count(Col1), min(Col1), max(Col1) ' +
-    'where Col2 is not null group by Col2, Col3 order by max(Col1) desc ' +
-    "label Col2 '', Col3 '', count(Col1) '', min(Col1) '', max(Col1) ''\"" +
+    '=IFERROR(QUERY(' + R + 'A2:' + lastLetter + ',' +
+    '"select Col' + NAME + ', Col' + BY + ', count(Col' + TS + '), ' +
+    'min(Col' + TS + '), max(Col' + TS + ') ' +
+    'where Col' + NAME + ' is not null group by Col' + NAME + ', Col' + BY + ' ' +
+    'order by max(Col' + TS + ') desc ' +
+    "label Col" + NAME + " '', Col" + BY + " '', count(Col" + TS + ") '', " +
+    "min(Col" + TS + ") '', max(Col" + TS + ") ''\"" +
     '),"")'
   );
 
   // 首次／最新體重用 SORT+INDEX 取，不用時間戳記字串比對（datetime 比對容易踩精度問題）
+  var tsL = colLetter(TS), wtL = colLetter(WT), nameL = colLetter(NAME), byL = colLetter(BY);
   var pick = function (asc) {
-    return '=IF($A2="","",IFERROR(INDEX(SORT(FILTER({' + R + '$A$2:$A,' + R + '$D$2:$D},' +
-      'TRIM(' + R + '$B$2:$B)=TRIM($A2),' +
-      'TRIM(' + R + '$C$2:$C)&""=TRIM($B2)&""' +
+    return '=IF($A2="","",IFERROR(INDEX(SORT(FILTER({' +
+      R + '$' + tsL + '$2:$' + tsL + ',' + R + '$' + wtL + '$2:$' + wtL + '},' +
+      'TRIM(' + R + '$' + nameL + '$2:$' + nameL + ')=TRIM($A2),' +
+      'TRIM(' + R + '$' + byL + '$2:$' + byL + ')&""=TRIM($B2)&""' +
       '),1,' + asc + '),1,2),""))';
   };
   sh.getRange('F2').setFormula(pick('TRUE'));
@@ -301,15 +355,65 @@ function removeDefaultSheet(ss, respName) {
 function repair() {
   var SS_ID = '1QYUX1yrZmjbbKkhb44i1ZA2D3liKAs0VL0ID_OEy_2E';
   var ss = SpreadsheetApp.openById(SS_ID);
-  var respName = findResponseSheet(ss).getName();
+  var respSheet = findResponseSheet(ss);
+  var respName = respSheet.getName();
+  var C = colMap(respSheet);
   Logger.log('偵測到的回應分頁名稱：「' + respName + '」');
+  Logger.log('欄位對照：' + JSON.stringify(C));
 
   ['個案歷程', '個案總表'].forEach(function (n) {
     var old = ss.getSheetByName(n);
     if (old) ss.deleteSheet(old);
   });
-  buildHistorySheet(ss, respName);
-  buildSummarySheet(ss, respName);
+  buildHistorySheet(ss, respName, C);
+  buildSummarySheet(ss, respName, C);
   removeDefaultSheet(ss, respName);
   Logger.log('修復完成。分頁現況：' + ss.getSheets().map(function(s){return s.getName();}).join('、'));
+}
+
+/**
+ * 調整既有表單的題目順序：把「身高(cm)」移到「體重(kg)」之前，並重建兩張分析分頁。
+ * 表單題目順序會連動回應分頁的欄位順序，故重建時一律重新解析表頭（colMap），
+ * 不假設欄位落在哪個字母。
+ *
+ * 執行前務必確認回應分頁沒有重要資料——這支會刪掉並重建個案歷程／個案總表
+ * （那兩張是純公式，沒有原始資料，重建不會遺失任何回覆）。
+ */
+function reorderFields() {
+  var FORM_ID_EDIT = '19uUl-kPa90fyVJaUasqjStXSNXUfCeGLyJj_5ZXT-e4';
+  var SS_ID        = '1QYUX1yrZmjbbKkhb44i1ZA2D3liKAs0VL0ID_OEy_2E';
+
+  var form = FormApp.openById(FORM_ID_EDIT);
+  var items = form.getItems();
+  var titles = items.map(function (it) { return it.getTitle(); });
+  Logger.log('調整前題目順序：' + titles.join(' → '));
+
+  var hIdx = titles.indexOf('身高(cm)');
+  var wIdx = titles.indexOf('體重(kg)');
+  if (hIdx === -1 || wIdx === -1) throw new Error('找不到身高或體重題目');
+
+  if (hIdx > wIdx) {
+    form.moveItem(items[hIdx], wIdx);
+    Logger.log('已把「身高(cm)」從第 ' + (hIdx + 1) + ' 題移到第 ' + (wIdx + 1) + ' 題');
+  } else {
+    Logger.log('身高已在體重之前，表單不需調整');
+  }
+  Logger.log('調整後題目順序：' +
+    form.getItems().map(function (it) { return it.getTitle(); }).join(' → '));
+
+  // 重建分析分頁：回應分頁的欄位順序可能跟著變，一律重新解析表頭
+  var ss = SpreadsheetApp.openById(SS_ID);
+  var respSheet = findResponseSheet(ss);
+  var respName = respSheet.getName();
+  var C = colMap(respSheet);
+  Logger.log('回應分頁「' + respName + '」實際欄位順序：');
+  Object.keys(C).forEach(function (k) { Logger.log('  ' + colLetter(C[k]) + ' 欄 = ' + k); });
+
+  ['個案歷程', '個案總表'].forEach(function (n) {
+    var old = ss.getSheetByName(n);
+    if (old) ss.deleteSheet(old);
+  });
+  buildHistorySheet(ss, respName, C);
+  buildSummarySheet(ss, respName, C);
+  Logger.log('分析分頁已依實際欄位順序重建完成。');
 }
