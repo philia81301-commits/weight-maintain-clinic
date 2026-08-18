@@ -223,8 +223,13 @@
   <div class="inline-tip">劑量選項會隨用藥自動切換，送出時存成固定格式（例：<code>Mounjaro 7.5 mg/週</code>）。資料庫舊的 drug 欄因為是自由文字，同一種藥散成 <code>moun</code>／<code>mou</code>／<code>M</code>／<code>Mounjaro</code> 好幾組，這裡改成下拉就是為了不再重演。</div>
 
   <div class="action-bar">
-    <button class="btn btn-success" onclick="generateNote()">產生病歷文字</button>
+    <button class="btn btn-success" onclick="generateNote()">產生病歷文字 ➜</button>
     <button class="btn btn-secondary" onclick="clearForm()">清除</button>
+  </div>
+  <div class="inline-tip" style="margin-top:12px">
+    <strong>送出表單的按鈕在下一個分頁。</strong>
+    按「產生病歷文字」會自動跳到「病歷文字」分頁，在那裡按
+    「<strong>複製並送出表單</strong>」才會複製貼稿並新增一筆到 Google 表單。
   </div>
 </div>
 
