@@ -394,7 +394,8 @@ function collect() {
     exDuration:  exercise === '有' ? val('exDuration')  : '無',
     exType:      exercise === '有' ? checkedVals('exTypeGroup') : ['無'],
     drug:        drug,
-    dose:        doseRaw ? (drug + ' ' + doseRaw).trim() : '',
+    // 劑量為「無」時不重複串藥名，避免存成「無用藥／生活型態 無」
+    dose:        doseRaw ? (doseRaw === '無' ? drug : (drug + ' ' + doseRaw).trim()) : '',
     doseRaw:     doseRaw
   };
 }

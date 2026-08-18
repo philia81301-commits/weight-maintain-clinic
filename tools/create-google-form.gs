@@ -113,6 +113,7 @@ function buildAll() {
 
   buildHistorySheet(ss, respName, C);
   buildSummarySheet(ss, respName, C);
+  addHistoryPickers(ss);
   removeDefaultSheet(ss, respName);
 
   // ---- 搬進「門診工具-正式運作中」----
@@ -245,7 +246,7 @@ function buildHistorySheet(ss, respName, C) {
   sh.getRange('A3').setValue('西元出生年');
   sh.getRange('A2:A3').setFontWeight('bold');
   sh.getRange('B2:B3').setBackground('#fff2cc').setBorder(true, true, true, true, false, false);
-  sh.getRange('D2').setValue('← 在黃色格子填入要查的個案（出生年用來區分同名不同人）')
+  sh.getRange('D2').setValue('← 在黃色格子選擇要查的個案（出生年用來區分同名不同人）')
     .setFontColor('#888');
   sh.getRange('D3').setValue('日期以「回診日期」欄為準，該欄空白才退用送出時間')
     .setFontColor('#888');
@@ -299,6 +300,27 @@ function buildHistorySheet(ss, respName, C) {
     .setOption('hAxis', { title: '回診日期' })
     .build();
   sh.insertChart(chart);
+}
+
+/**
+ * 個案歷程的姓名／出生年改成下拉選單（來源＝個案總表）。
+ * 手打姓名只要差一個字就查不到，而且畫面只會空白、不會提示哪裡錯。
+ * 必須在 buildSummarySheet 之後呼叫，因為來源範圍在個案總表。
+ */
+function addHistoryPickers(ss) {
+  var hist = ss.getSheetByName('個案歷程');
+  var sum  = ss.getSheetByName('個案總表');
+  if (!hist || !sum) return;
+
+  var mk = function (col) {
+    return SpreadsheetApp.newDataValidation()
+      .requireValueInRange(sum.getRange(2, col, 399, 1), true)
+      .setAllowInvalid(true)   // 允許手打：個案總表還沒有資料時也要能用
+      .setHelpText('可從清單挑選，也可直接輸入')
+      .build();
+  };
+  hist.getRange('B2').setDataValidation(mk(1));  // 姓名
+  hist.getRange('B3').setDataValidation(mk(2));  // 西元出生年
 }
 
 /** 個案總表：每人一列，首次／最新體重、總變化、回診次數。 */
@@ -397,6 +419,7 @@ function repair() {
   });
   buildHistorySheet(ss, respName, C);
   buildSummarySheet(ss, respName, C);
+  addHistoryPickers(ss);
   removeDefaultSheet(ss, respName);
   Logger.log('修復完成。分頁現況：' + ss.getSheets().map(function(s){return s.getName();}).join('、'));
 }
@@ -445,6 +468,7 @@ function reorderFields() {
   });
   buildHistorySheet(ss, respName, C);
   buildSummarySheet(ss, respName, C);
+  addHistoryPickers(ss);
   Logger.log('分析分頁已依實際欄位順序重建完成。');
 }
 
@@ -518,5 +542,6 @@ function addVisitDateField() {
   });
   buildHistorySheet(ss, respName, C);
   buildSummarySheet(ss, respName, C);
+  addHistoryPickers(ss);
   Logger.log('分析分頁重建完成。');
 }
