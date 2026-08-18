@@ -7,6 +7,13 @@
 - 表單（填寫）：https://docs.google.com/forms/d/e/1FAIpQLScS35aQ8V6-g4gRbQzkEwFY0GwC3b3O5DWPAXy8k6Uyj_GNQg/viewform
 - 表單（編輯）：https://docs.google.com/forms/d/19uUl-kPa90fyVJaUasqjStXSNXUfCeGLyJj_5ZXT-e4/edit
 - 回覆試算表：https://docs.google.com/spreadsheets/d/1QYUX1yrZmjbbKkhb44i1ZA2D3liKAs0VL0ID_OEy_2E/edit
+- **建置腳本（Apps Script，獨立專案）**：
+  https://script.google.com/d/1Y-jx2LivSjo1bF1gXPMi_JMmNkONHA3lsrtusypyz_8B9PZ21PrMnN-z/edit
+  專案名「體重維持工具-建置腳本」，與表單、試算表同放「門診工具-正式運作中」。
+  **一定要用獨立專案，不要從表單 ⋮ →「指令碼編輯器」建**——那是綁定式專案，
+  容器檔案一刪就跟著進垃圾桶（2026-08-18 發生過一次）。
+  程式碼正本在 repo 的 `tools/create-google-form.gs`，雲端那份只是執行用的副本，
+  改動一律先改 repo 再整份貼上覆蓋。
 - 兩者都在「門診工具-正式運作中」資料夾，三個分頁（表單回應／個案歷程／個案總表）已生成
 
 **注意：回應分頁的實際名稱是英文 `Form Responses 1`**，表頭也是英文 `Timestamp`
@@ -23,6 +30,10 @@ BMI 自動計算與分級、劑量隨藥切換、無用藥自動帶「無」、�
 運動選「無」自動補三個「無」、劑量字串 `Mounjaro 7.5 mg/週`、ENTRY 14 個全有值。
 
 **已上線**：<https://philia81301-commits.github.io/weight-maintain-clinic/>
+
+表單題目順序：姓名 → 西元出生年 → **回診日期** → 身高 → 體重 → BMI分級 → 腰圍 → …
+回應分頁欄位順序：A=Timestamp、B=姓名、C=西元出生年、D=體重、E=身高、…、**P=回診日期**
+（兩者不一致是正常的，見 `agents.md`）
 - repo：<https://github.com/philia81301-commits/weight-maintain-clinic>（公開，main 的 root）
 - 線上版已驗證：HTTP 200、`FORM_ID` 正確帶上線、佔位字串只剩防呆碼本身
 
