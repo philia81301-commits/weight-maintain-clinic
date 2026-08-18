@@ -269,9 +269,9 @@ const ENTRY = {
   exType:      'entry.443472723',    // 運動類型
   drug:        'entry.133923952',    // 目前用藥
   dose:        'entry.429082813',    // 藥物劑量
-  // 日期題的送出參數會拆成 _year / _month / _day，此處只放基底編號。
-  // 執行 create-google-form.gs 的 addVisitDateField() 後，把印出的編號填進來。
-  visitDate:   'REPLACE_visitDate'   // 回診日期
+  // 日期題是單一參數、值為 YYYY-MM-DD（2026-08-18 由 addVisitDateField() 實測確認，
+  // 不是常見說法的 _year / _month / _day 三個參數）。
+  visitDate:   'entry.1485371335'    // 回診日期
 };
 
 /* 各藥劑量字典。null = 改用自由文字輸入（併用／轉換情境無法列舉）。 */
@@ -522,14 +522,9 @@ function buildFormParams() {
   set('drug', d.drug);
   set('dose', d.dose);
 
-  // 日期題不是單一 entry.N，要拆成三個參數送
-  if (d.visitDate && ENTRY.visitDate.indexOf('REPLACE_') !== 0) {
-    var parts = d.visitDate.split('-');           // YYYY-MM-DD
-    var base = ENTRY.visitDate;
-    params.set(base + '_year',  parts[0]);
-    params.set(base + '_month', String(parseInt(parts[1], 10)));
-    params.set(base + '_day',   String(parseInt(parts[2], 10)));
-  }
+  // 日期題直接送 YYYY-MM-DD 字串（與預填網址同格式）。
+  // 不經過 Date 物件，避免時區換算把日期偏移一天。
+  set('visitDate', d.visitDate);
 
   params.set('fvv', '1');
   params.set('submissionTimestamp', '-1');
@@ -554,8 +549,7 @@ function copyAndSubmit() {
     return;
   }
 
-  const unset = Object.keys(ENTRY).filter(
-    k => k !== 'visitDate' && String(ENTRY[k]).indexOf('REPLACE_') === 0);
+  const unset = Object.keys(ENTRY).filter(k => String(ENTRY[k]).indexOf('REPLACE_') === 0);
   if (FORM_ID.indexOf('REPLACE_') === 0 || unset.length) {
     alert('尚未設定表單對應，無法送出。\n\n請先執行 create-form.gs 的 buildAll()，'
         + '把執行紀錄印出的 FORM_ID 與 ENTRY 貼進本檔。\n\n未設定：'
