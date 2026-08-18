@@ -256,7 +256,7 @@ function buildHistorySheet(ss, respName, C) {
     .setFontWeight('bold').setBackground('#d9e2f3');
 
   sh.getRange('A6').setFormula(
-    '=IF($B$2="","",IFERROR(SORT(FILTER({' +
+    '=IF($B$2="","",IFNA(SORT(FILTER({' +
       DATE + ',' + rng(WT) + ',' + rng(WAIST) + ',' +
       rng(GRADE) + ',' + rng(DRUG) + ',' + rng(DOSE) + '},' +
       'TRIM(' + rng(NAME) + ')=TRIM($B$2),' +
@@ -312,11 +312,13 @@ function buildSummarySheet(ss, respName, C) {
 
   // QUERY 只負責分組與計數（QUERY 無法在欄位上套 IF，故日期改用下方陣列公式取）
   // label 全部設成 '' 才不會多出一列 QUERY 自動表頭
+  // 用 IFNA 不用 IFERROR：IFNA 只吞「查無資料」(#N/A)，
+  // 查詢語法錯誤等真正的問題會顯示出來，不會變成一片空白讓人以為沒資料。
   sh.getRange('A2').setFormula(
-    '=IFERROR(QUERY(' + R + 'A2:' + lastLetter + ',' +
+    '=IFNA(QUERY(' + R + 'A2:' + lastLetter + ',' +
     '"select Col' + NAME + ', Col' + BY + ', count(Col' + TS + ') ' +
     'where Col' + NAME + ' is not null group by Col' + NAME + ', Col' + BY + ' ' +
-    'order by max(Col' + TS + ') desc ' +
+    'order by Col' + NAME + ' ' +
     "label Col" + NAME + " '', Col" + BY + " '', count(Col" + TS + ") ''\"" +
     '),"")'
   );
@@ -326,7 +328,7 @@ function buildSummarySheet(ss, respName, C) {
   var DATE = dateExpr(R, C, true);
   var A = function (L) { return R + '$' + L + '$2:$' + L; };
   var pick = function (asc, second) {
-    return '=IF($A2="","",IFERROR(INDEX(SORT(FILTER({' + DATE + ',' + second + '},' +
+    return '=IF($A2="","",IFNA(INDEX(SORT(FILTER({' + DATE + ',' + second + '},' +
       'TRIM(' + A(colLetter(NAME)) + ')=TRIM($A2),' +
       'TRIM(' + A(colLetter(BY)) + ')&""=TRIM($B2)&""' +
       '),1,' + asc + '),1,2),""))';
