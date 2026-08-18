@@ -84,12 +84,12 @@
   <h2>身體測量</h2>
   <div class="field-row-3">
     <div class="field-group">
-      <label>體重 (kg) <span class="req">*</span></label>
-      <input type="number" id="weight" placeholder="ex: 78.5" step="0.1" min="20" max="300">
-    </div>
-    <div class="field-group">
       <label>身高 (cm) <span class="req">*</span></label>
       <input type="number" id="height" placeholder="ex: 165" step="0.1" min="100" max="250">
+    </div>
+    <div class="field-group">
+      <label>體重 (kg) <span class="req">*</span></label>
+      <input type="number" id="weight" placeholder="ex: 78.5" step="0.1" min="20" max="300">
     </div>
     <div class="field-group">
       <label>BMI（自動計算）</label>
@@ -390,8 +390,8 @@ function validate(d) {
   if (!d.birthYear) return fail('請填寫西元出生年（歷程要用它區分同名個案）', 'birthYear');
   const by = parseInt(d.birthYear, 10);
   if (!(by >= 1930 && by <= 2020)) return fail('西元出生年看起來不對，應在 1930～2020 之間', 'birthYear');
-  if (!d.weight)    return fail('請填寫體重', 'weight');
   if (!d.height)    return fail('請填寫身高', 'height');
+  if (!d.weight)    return fail('請填寫體重', 'weight');
   if (!d.bmiGrade)  return fail('請選擇 BMI 分級（通常填身高體重會自動勾選）');
   if (!d.weightTrend) return fail('請選擇與前次相比體重變化');
   if (!d.diet.length) return fail('請至少勾選一項飲食習慣');
