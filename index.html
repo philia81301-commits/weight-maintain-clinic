@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>減重維持輸入工具</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Microsoft JhengHei", "PingFang TC", sans-serif; background: #f0f4f8; color: #2c3e50; padding: 20px; }
+  .container { max-width: 860px; margin: 0 auto; }
+  header { background: linear-gradient(135deg, #1e6f5c, #2e9e7e); color: #fff; padding: 24px; border-radius: 12px; margin-bottom: 20px; }
+  header h1 { font-size: 1.5em; margin-bottom: 4px; }
+  header p { opacity: .85; font-size: .9em; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+  .tab { flex: 1; padding: 10px; text-align: center; background: #dde4ea; border: none; border-radius: 8px 8px 0 0; cursor: pointer; font-weight: 700; font-size: .95em; transition: .2s; }
+  .tab.active { background: #fff; color: #1e6f5c; }
+  .tab:hover { background: #c8d4df; }
+  .panel { display: none; background: #fff; border-radius: 0 0 12px 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+  .panel.active { display: block; }
+  .panel h2 { color: #1e6f5c; border-left: 5px solid #2e9e7e; padding-left: 12px; margin-bottom: 16px; font-size: 1.15em; }
+  .field-group { margin-bottom: 14px; }
+  .field-group label { display: block; font-weight: 700; margin-bottom: 4px; font-size: .9em; color: #34495e; }
+  .field-group label .req { color: #e74c3c; }
+  .field-group select, .field-group input[type="text"], .field-group input[type="number"] { width: 100%; padding: 9px 12px; border: 1px solid #ccd7e4; border-radius: 6px; font-size: .95em; font-family: inherit; background: #fafcfd; }
+  .field-group select:focus, .field-group input:focus { outline: none; border-color: #2e9e7e; box-shadow: 0 0 0 3px rgba(46,158,126,.15); }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .field-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .radio-group, .checkbox-group { display: flex; flex-wrap: wrap; gap: 8px; }
+  .radio-group label, .checkbox-group label { font-weight: 400; display: flex; align-items: center; gap: 5px; font-size: .88em; background: #f7f9fb; padding: 6px 12px; border-radius: 6px; border: 1px solid #e8edf4; cursor: pointer; }
+  .radio-group input, .checkbox-group input { width: 16px; height: 16px; accent-color: #2e9e7e; }
+  .conditional { display: none; background: #f2faf7; border: 1px solid #cfe8de; border-radius: 8px; padding: 16px; margin: 12px 0; }
+  .conditional.visible { display: block; }
+  .conditional h3 { font-size: 1em; color: #1e6f5c; margin-bottom: 12px; }
+  .btn { padding: 10px 24px; border: none; border-radius: 8px; font-size: 1em; font-weight: 700; cursor: pointer; transition: .2s; }
+  .btn-primary { background: #2e9e7e; color: #fff; }
+  .btn-primary:hover { background: #217a61; }
+  .btn-success { background: #27ae60; color: #fff; }
+  .btn-success:hover { background: #1e8f4e; }
+  .btn-secondary { background: #95a5a6; color: #fff; }
+  .btn-secondary:hover { background: #7f8c8d; }
+  .action-bar { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+  .output-box textarea { width: 100%; min-height: 200px; margin-top: 16px; padding: 14px; border: 1px solid #ccd7e4; border-radius: 8px; font-family: "Microsoft JhengHei", sans-serif; font-size: .92em; line-height: 1.7; resize: vertical; background: #fafcfd; }
+  .output-box textarea:focus { outline: none; border-color: #2e9e7e; }
+  .copy-notice { color: #27ae60; font-size: .85em; margin-top: 6px; display: none; }
+  .section-divider { border: none; border-top: 2px dashed #e0e7ef; margin: 20px 0; }
+  .inline-tip { background: #fef9e7; border-left: 4px solid #f1c40f; padding: 10px 14px; border-radius: 6px; font-size: .85em; margin-bottom: 16px; }
+  @media (max-width: 640px) { .field-row, .field-row-3 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <h1>減重維持輸入工具</h1>
+  <p>回診紀錄 → 自動產生病歷貼稿 → 一鍵送出「*體重維持紀錄」表單</p>
+</header>
+
+<div class="tabs">
+  <button class="tab active" data-tab="input">回診輸入</button>
+  <button class="tab" data-tab="output">病歷文字</button>
+</div>
+
+<!-- ====== 輸入面板 ====== -->
+<div class="panel active" id="panel-input">
+
+  <h2>基本資料</h2>
+  <div class="inline-tip">個案歷程以「姓名＋西元出生年」合併。同一位個案每次回診的姓名與出生年務必填一致，否則歷程會斷成兩條。</div>
+  <div class="field-row-3">
+    <div class="field-group">
+      <label>姓名 <span class="req">*</span></label>
+      <input type="text" id="name" placeholder="請輸入姓名">
+    </div>
+    <div class="field-group">
+      <label>西元出生年 <span class="req">*</span></label>
+      <input type="number" id="birthYear" placeholder="ex: 1985" min="1930" max="2020">
+    </div>
+    <div class="field-group">
+      <label>年齡</label>
+      <input type="number" id="age" placeholder="自動計算" readonly style="background:#f0f4f8">
+    </div>
+  </div>
+
+  <hr class="section-divider">
+  <h2>身體測量</h2>
+  <div class="field-row-3">
+    <div class="field-group">
+      <label>體重 (kg) <span class="req">*</span></label>
+      <input type="number" id="weight" placeholder="ex: 78.5" step="0.1" min="20" max="300">
+    </div>
+    <div class="field-group">
+      <label>身高 (cm) <span class="req">*</span></label>
+      <input type="number" id="height" placeholder="ex: 165" step="0.1" min="100" max="250">
+    </div>
+    <div class="field-group">
+      <label>BMI（自動計算）</label>
+      <input type="text" id="bmi" readonly placeholder="填身高體重後自動算" style="background:#f0f4f8">
+    </div>
+  </div>
+  <div class="field-group">
+    <label>BMI 分級 <span class="req">*</span></label>
+    <div class="radio-group" id="bmiGradeGroup">
+      <label><input type="radio" name="bmiGrade" value="小於24但腰圍超標"> 小於24但腰圍超標</label>
+      <label><input type="radio" name="bmiGrade" value="24-27"> 24-27</label>
+      <label><input type="radio" name="bmiGrade" value="27-30"> 27-30</label>
+      <label><input type="radio" name="bmiGrade" value="30-35"> 30-35</label>
+      <label><input type="radio" name="bmiGrade" value="大於35"> 大於35</label>
+    </div>
+  </div>
+  <div class="field-row">
+    <div class="field-group">
+      <label>腰圍 (cm)</label>
+      <input type="number" id="waist" placeholder="ex: 92（可留空）" step="0.1" min="40" max="200">
+    </div>
+    <div class="field-group">
+      <label>與前次相比體重變化 <span class="req">*</span></label>
+      <div class="radio-group" id="weightTrendGroup">
+        <label><input type="radio" name="weightTrend" value="下降"> 下降</label>
+        <label><input type="radio" name="weightTrend" value="無變化"> 無變化</label>
+        <label><input type="radio" name="weightTrend" value="上升"> 上升</label>
+      </div>
+    </div>
+  </div>
+
+  <hr class="section-divider">
+  <h2>飲食習慣（可複選）<span class="req">*</span></h2>
+  <div class="checkbox-group" id="dietGroup">
+    <label><input type="checkbox" value="外食居多"> 外食居多</label>
+    <label><input type="checkbox" value="含糖飲料"> 含糖飲料</label>
+    <label><input type="checkbox" value="偏好肉類"> 偏好肉類</label>
+    <label><input type="checkbox" value="偏好飯、麵食類"> 偏好飯、麵食類</label>
+    <label><input type="checkbox" value="甜點、餅乾類"> 甜點、餅乾類</label>
+    <label><input type="checkbox" value="宵夜"> 宵夜</label>
+    <label><input type="checkbox" value="經常飲酒"> 經常飲酒</label>
+    <label><input type="checkbox" value="其他"> 其他</label>
+  </div>
+
+  <hr class="section-divider">
+  <h2>運動紀錄</h2>
+  <div class="field-group">
+    <label>運動頻率 <span class="req">*</span></label>
+    <div class="radio-group" id="exerciseGroup">
+      <label><input type="radio" name="exercise" value="無" onchange="toggleExerciseSection()"> 無</label>
+      <label><input type="radio" name="exercise" value="有" onchange="toggleExerciseSection()"> 有</label>
+    </div>
+  </div>
+  <div class="conditional" id="exerciseSection">
+    <h3>運動習慣（選「有」才需填）</h3>
+    <div class="field-row">
+      <div class="field-group">
+        <label>每週運動頻率</label>
+        <select id="exFreq">
+          <option value="">-- 請選擇 --</option>
+          <option value="1-3次">1-3次</option>
+          <option value="3-5次">3-5次</option>
+          <option value="每天">每天</option>
+          <option value="假日">假日</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label>每次運動時間</label>
+        <select id="exDuration">
+          <option value="">-- 請選擇 --</option>
+          <option value="30分鐘以內">30分鐘以內</option>
+          <option value="30至60分鐘">30至60分鐘</option>
+          <option value="60分鐘以上">60分鐘以上</option>
+        </select>
+      </div>
+    </div>
+    <div class="field-group">
+      <label>運動類型（可複選）</label>
+      <div class="checkbox-group" id="exTypeGroup">
+        <label><input type="checkbox" value="走路"> 走路</label>
+        <label><input type="checkbox" value="快走"> 快走</label>
+        <label><input type="checkbox" value="慢跑"> 慢跑</label>
+        <label><input type="checkbox" value="重訓"> 重訓</label>
+        <label><input type="checkbox" value="瑜珈"> 瑜珈</label>
+        <label><input type="checkbox" value="球類"> 球類</label>
+        <label><input type="checkbox" value="腳踏車"> 腳踏車</label>
+        <label><input type="checkbox" value="游泳"> 游泳</label>
+        <label><input type="checkbox" value="核心訓練"> 核心訓練</label>
+        <label><input type="checkbox" value="其他"> 其他</label>
+      </div>
+    </div>
+  </div>
+
+  <hr class="section-divider">
+  <h2>用藥</h2>
+  <div class="field-row">
+    <div class="field-group">
+      <label>目前用藥 <span class="req">*</span></label>
+      <select id="drug" onchange="onDrugChange()">
+        <option value="">-- 請選擇 --</option>
+        <option value="無用藥／生活型態">無用藥／生活型態</option>
+        <option value="Mounjaro">Mounjaro</option>
+        <option value="Ozempic">Ozempic</option>
+        <option value="Wegovy">Wegovy</option>
+        <option value="Saxenda">Saxenda</option>
+        <option value="Rybelsus">Rybelsus</option>
+        <option value="Contrave">Contrave</option>
+        <option value="Xenical">Xenical</option>
+        <option value="Jardiance">Jardiance</option>
+        <option value="Acarbose">Acarbose</option>
+        <option value="併用／轉換兩種">併用／轉換兩種</option>
+      </select>
+    </div>
+    <div class="field-group">
+      <label>藥物劑量 <span class="req">*</span></label>
+      <select id="dose"><option value="">先選擇用藥</option></select>
+      <input type="text" id="doseText" placeholder="ex: Ozempic 1.0 mg/週 轉 Mounjaro 5 mg/週" style="display:none">
+    </div>
+  </div>
+  <div class="inline-tip">劑量選項會隨用藥自動切換，送出時存成固定格式（例：<code>Mounjaro 7.5 mg/週</code>）。資料庫舊的 drug 欄因為是自由文字，同一種藥散成 <code>moun</code>／<code>mou</code>／<code>M</code>／<code>Mounjaro</code> 好幾組，這裡改成下拉就是為了不再重演。</div>
+
+  <div class="action-bar">
+    <button class="btn btn-success" onclick="generateNote()">產生病歷文字</button>
+    <button class="btn btn-secondary" onclick="clearForm()">清除</button>
+  </div>
+</div>
+
+<!-- ====== 輸出面板 ====== -->
+<div class="panel" id="panel-output">
+  <h2>病歷貼稿</h2>
+  <div class="inline-tip">貼稿已自動複製，可直接到病歷系統 Ctrl+V。按「複製並送出表單」會再複製一次，並新增一筆到「*體重維持紀錄」。</div>
+  <div class="output-box">
+    <textarea id="noteOutput" placeholder="填寫後點「產生病歷文字」，這裡會自動產生可貼上病歷的摘要。"></textarea>
+  </div>
+  <div class="copy-notice" id="copyNotice">已複製到剪貼簿！</div>
+  <div class="action-bar">
+    <button class="btn btn-success" onclick="copyAndSubmit()">複製並送出表單</button>
+    <button class="btn btn-primary" onclick="copyNote()">只複製，不送出</button>
+    <button class="btn btn-secondary" onclick="backToInput()">回到輸入</button>
+  </div>
+</div>
+
+</div>
+
+<script>
+/* ===========================================================================
+   表單對應設定
+   ---------------------------------------------------------------------------
+   執行 create-form.gs 的 buildAll() 後，把「執行紀錄」印出的兩段整段換掉下面。
+   選項字串必須與 Google 表單的選項「一字不差」，包含全形斜線（併用／轉換兩種）。
+   對不上的選項 Google 會靜默丟棄那一題，不會報錯。
+   =========================================================================== */
+const FORM_ID = '1FAIpQLScS35aQ8V6-g4gRbQzkEwFY0GwC3b3O5DWPAXy8k6Uyj_GNQg';
+const ENTRY = {
+  name:        'entry.1346359472',   // 姓名
+  birthYear:   'entry.1559588243',   // 西元出生年
+  weight:      'entry.1664547954',   // 體重(kg)
+  height:      'entry.302431061',    // 身高(cm)
+  bmiGrade:    'entry.1819793740',   // BMI分級
+  waist:       'entry.1618223974',   // 腰圍(cm)
+  weightTrend: 'entry.852475821',    // 與前次相比體重變化
+  diet:        'entry.1011370653',   // 飲食習慣
+  exercise:    'entry.851374593',    // 運動頻率
+  exFreq:      'entry.2135040034',   // 每週運動頻率
+  exDuration:  'entry.1921339078',   // 每次運動時間
+  exType:      'entry.443472723',    // 運動類型
+  drug:        'entry.133923952',    // 目前用藥
+  dose:        'entry.429082813'     // 藥物劑量
+};
+
+/* 各藥劑量字典。null = 改用自由文字輸入（併用／轉換情境無法列舉）。 */
+const DOSE_OPTIONS = {
+  '無用藥／生活型態': ['無'],
+  'Mounjaro':  ['2.5 mg/週', '5 mg/週', '7.5 mg/週', '10 mg/週', '12.5 mg/週', '15 mg/週'],
+  'Ozempic':   ['0.25 mg/週', '0.5 mg/週', '1.0 mg/週'],
+  'Wegovy':    ['0.25 mg/週', '0.5 mg/週', '1.0 mg/週', '1.7 mg/週', '2.4 mg/週'],
+  'Saxenda':   ['0.6 mg/日', '1.2 mg/日', '1.8 mg/日', '2.4 mg/日', '3.0 mg/日'],
+  'Rybelsus':  ['3 mg/日', '7 mg/日', '14 mg/日'],
+  'Contrave':  ['1 錠/日', '2 錠/日', '3 錠/日', '4 錠/日'],
+  'Xenical':   ['120 mg qd', '120 mg bid', '120 mg tid'],
+  'Jardiance': ['10 mg/日', '25 mg/日'],
+  'Acarbose':  ['50 mg tid', '100 mg tid'],
+  '併用／轉換兩種': null
+};
+
+const val      = id   => { const el = document.getElementById(id); return el ? String(el.value).trim() : ''; };
+const radioVal = name => { const c = document.querySelector('input[name="' + name + '"]:checked'); return c ? c.value : ''; };
+const checkedVals = id => Array.from(document.querySelectorAll('#' + id + ' input:checked')).map(cb => cb.value);
+
+// ---- BMI 自動計算 + 自動勾選分級 ----
+function calcBMI() {
+  const h = parseFloat(val('height')) / 100;
+  const w = parseFloat(val('weight'));
+  const bmiInput = document.getElementById('bmi');
+  if (h > 0 && w > 0) {
+    const bmi = w / (h * h);
+    bmiInput.value = bmi.toFixed(1);
+    let grade = bmi >= 35 ? '大於35'
+              : bmi >= 30 ? '30-35'
+              : bmi >= 27 ? '27-30'
+              : bmi >= 24 ? '24-27'
+              : '小於24但腰圍超標';
+    document.querySelectorAll('input[name="bmiGrade"]').forEach(r => { if (r.value === grade) r.checked = true; });
+  } else {
+    bmiInput.value = '';
+  }
+}
+['height', 'weight'].forEach(id => {
+  ['input', 'change'].forEach(ev => document.getElementById(id).addEventListener(ev, calcBMI));
+});
+
+// ---- 年齡自動計算 ----
+document.getElementById('birthYear').addEventListener('change', function () {
+  const y = parseInt(this.value, 10);
+  const age = new Date().getFullYear() - y;
+  document.getElementById('age').value = (this.value && y >= 1900 && age >= 0 && age <= 120) ? age : '';
+});
+
+// ---- 運動區塊顯示切換 ----
+function toggleExerciseSection() {
+  const c = document.querySelector('input[name="exercise"]:checked');
+  document.getElementById('exerciseSection').classList.toggle('visible', !!c && c.value === '有');
+}
+
+// ---- 劑量選項隨用藥切換 ----
+function onDrugChange() {
+  const drug = val('drug');
+  const sel = document.getElementById('dose');
+  const txt = document.getElementById('doseText');
+  const opts = DOSE_OPTIONS.hasOwnProperty(drug) ? DOSE_OPTIONS[drug] : undefined;
+
+  if (opts === null) {              // 併用／轉換：自由文字
+    sel.style.display = 'none';
+    sel.value = '';
+    txt.style.display = 'block';
+    return;
+  }
+  txt.style.display = 'none';
+  txt.value = '';
+  sel.style.display = 'block';
+  sel.innerHTML = '';
+  if (!opts) {
+    sel.appendChild(new Option('先選擇用藥', ''));
+    return;
+  }
+  sel.appendChild(new Option('-- 請選擇 --', ''));
+  opts.forEach(o => sel.appendChild(new Option(o, o)));
+  if (opts.length === 1) sel.value = opts[0];   // 無用藥 → 直接帶入「無」
+}
+
+// ---- 索引標籤切換 ----
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', function () {
+    showPanel(this.dataset.tab);
+  });
+});
+function showPanel(which) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelector('[data-tab="' + which + '"]').classList.add('active');
+  document.getElementById('panel-' + which).classList.add('active');
+}
+
+/* ---- 收集所有欄位。運動選「無」時自動補「無」，避免表單分支 ---- */
+function collect() {
+  const drug = val('drug');
+  const doseRaw = (DOSE_OPTIONS[drug] === null) ? val('doseText') : val('dose');
+  const exercise = radioVal('exercise');
+
+  return {
+    name:        val('name'),
+    birthYear:   val('birthYear'),
+    weight:      val('weight'),
+    height:      val('height'),
+    bmi:         val('bmi'),
+    bmiGrade:    radioVal('bmiGrade'),
+    waist:       val('waist'),
+    weightTrend: radioVal('weightTrend'),
+    diet:        checkedVals('dietGroup'),
+    exercise:    exercise,
+    exFreq:      exercise === '有' ? val('exFreq')      : '無',
+    exDuration:  exercise === '有' ? val('exDuration')  : '無',
+    exType:      exercise === '有' ? checkedVals('exTypeGroup') : ['無'],
+    drug:        drug,
+    dose:        doseRaw ? (drug + ' ' + doseRaw).trim() : '',
+    doseRaw:     doseRaw
+  };
+}
+
+/* ---- 必填驗證。全部擋在前端：表單端刻意不設必填，見 create-form.gs 檔頭 ---- */
+function validate(d) {
+  const fail = (msg, focusId) => {
+    alert('無法送出：' + msg);
+    if (focusId) { const el = document.getElementById(focusId); if (el) el.focus(); }
+    return false;
+  };
+  if (!d.name)      return fail('請填寫姓名', 'name');
+  if (!d.birthYear) return fail('請填寫西元出生年（歷程要用它區分同名個案）', 'birthYear');
+  const by = parseInt(d.birthYear, 10);
+  if (!(by >= 1930 && by <= 2020)) return fail('西元出生年看起來不對，應在 1930～2020 之間', 'birthYear');
+  if (!d.weight)    return fail('請填寫體重', 'weight');
+  if (!d.height)    return fail('請填寫身高', 'height');
+  if (!d.bmiGrade)  return fail('請選擇 BMI 分級（通常填身高體重會自動勾選）');
+  if (!d.weightTrend) return fail('請選擇與前次相比體重變化');
+  if (!d.diet.length) return fail('請至少勾選一項飲食習慣');
+  if (!d.exercise)  return fail('請選擇運動頻率（無／有）');
+  if (d.exercise === '有') {
+    if (!d.exFreq)     return fail('運動選「有」時，請選擇每週運動頻率', 'exFreq');
+    if (!d.exDuration) return fail('運動選「有」時，請選擇每次運動時間', 'exDuration');
+    if (!d.exType.length) return fail('運動選「有」時，請至少勾選一項運動類型');
+  }
+  if (!d.drug)    return fail('請選擇目前用藥', 'drug');
+  if (!d.doseRaw) return fail('請填寫藥物劑量',
+                              DOSE_OPTIONS[d.drug] === null ? 'doseText' : 'dose');
+  return true;
+}
+
+// ---- 產生病歷文字 ----
+let noteSubmitted = false;
+
+function generateNote() {
+  noteSubmitted = false;
+  const d = collect();
+  const now = new Date();
+  const dateStr = now.getFullYear() + '/' + String(now.getMonth() + 1).padStart(2, '0')
+                + '/' + String(now.getDate()).padStart(2, '0');
+
+  const lines = [];
+  lines.push('【減重維持回診】' + dateStr);
+
+  let basic = '姓名：' + (d.name || '（姓名）');
+  if (val('age')) basic += '　年齡：' + val('age') + '歲';
+  if (d.birthYear) basic += '（' + d.birthYear + '年）';
+  lines.push(basic);
+
+  let measure = '';
+  if (d.weight) measure += '體重 ' + d.weight + 'kg';
+  if (d.height) measure += '／身高 ' + d.height + 'cm';
+  if (d.bmi)    measure += '／BMI ' + d.bmi;
+  if (d.waist)  measure += '／腰圍 ' + d.waist + 'cm';
+  if (measure) lines.push('體位：' + measure);
+  if (d.bmiGrade)    lines.push('BMI 分級：' + d.bmiGrade);
+  if (d.weightTrend) lines.push('與前次相比：' + d.weightTrend);
+  if (d.diet.length) lines.push('飲食習慣：' + d.diet.join('、'));
+
+  if (d.exercise === '有') {
+    let ex = '運動：有';
+    if (d.exFreq !== '無')     ex += '，每週 ' + d.exFreq;
+    if (d.exDuration !== '無') ex += '，每次 ' + d.exDuration;
+    if (d.exType.length && d.exType[0] !== '無') ex += '（' + d.exType.join('、') + '）';
+    lines.push(ex);
+  } else if (d.exercise === '無') {
+    lines.push('運動：無');
+  }
+
+  if (d.drug) lines.push('用藥：' + d.drug + (d.doseRaw ? '　劑量：' + d.doseRaw : ''));
+
+  lines.push('');
+  lines.push('【處置與計畫】');
+  lines.push('□ 飲食衛教　□ 運動建議　□ 劑量調整：______　□ ______ 週後回診');
+  lines.push('□ 抽血檢驗　□ 轉介營養師　□ 其他：______');
+
+  document.getElementById('noteOutput').value = lines.join('\n');
+  showPanel('output');
+  setTimeout(copyNote, 300);
+}
+
+function copyNote() {
+  const ta = document.getElementById('noteOutput');
+  ta.select();
+  navigator.clipboard.writeText(ta.value).then(() => {
+    const n = document.getElementById('copyNotice');
+    n.style.display = 'block';
+    setTimeout(() => { n.style.display = 'none'; }, 2000);
+  }).catch(() => { document.execCommand('copy'); });
+}
+
+function backToInput() { showPanel('input'); }
+
+function clearForm() {
+  document.querySelectorAll('input[type="text"], input[type="number"], select').forEach(el => el.value = '');
+  document.querySelectorAll('input[type="radio"], input[type="checkbox"]').forEach(cb => cb.checked = false);
+  document.getElementById('noteOutput').value = '';
+  document.getElementById('exerciseSection').classList.remove('visible');
+  document.getElementById('doseText').style.display = 'none';
+  document.getElementById('dose').style.display = 'block';
+  onDrugChange();
+  noteSubmitted = false;
+}
+
+/* ---- 組出表單參數 ----
+   單一區段表單，不需要 pageHistory。減重門診那份是 6 區段，沒帶 pageHistory
+   會讓第 1 區段之後的答案全部被靜默丟棄（2026-07 的資料截斷事故）。 */
+function buildFormParams() {
+  const d = collect();
+  if (!validate(d)) return null;
+
+  const params = new URLSearchParams();
+  const set = (key, v) => { if (v) params.set(ENTRY[key], v); };
+  const app = (key, arr) => arr.forEach(v => { if (v) params.append(ENTRY[key], v); });
+
+  set('name', d.name);
+  set('birthYear', d.birthYear);
+  set('weight', d.weight);
+  set('height', d.height);
+  set('bmiGrade', d.bmiGrade);
+  set('waist', d.waist);
+  set('weightTrend', d.weightTrend);
+  app('diet', d.diet);
+  set('exercise', d.exercise);
+  set('exFreq', d.exFreq);
+  set('exDuration', d.exDuration);
+  app('exType', d.exType);
+  set('drug', d.drug);
+  set('dose', d.dose);
+
+  params.set('fvv', '1');
+  params.set('submissionTimestamp', '-1');
+  return { params, name: d.name };
+}
+
+/* ---- 複製貼稿 + 背景送出 ----
+   託管在 GitHub Pages（無 CSP 限制），用 no-cors fetch 背景送出，按一下就完成。
+   no-cors 讀不到回應，所以成功與否無法從回應判斷——必填一律前端先擋。
+   keepalive: true：送出後常立刻切分頁貼病歷，避免頁面失焦時請求被瀏覽器砍斷。 */
+function copyAndSubmit() {
+  copyNote();
+
+  const unset = Object.keys(ENTRY).filter(k => String(ENTRY[k]).indexOf('REPLACE_') === 0);
+  if (FORM_ID.indexOf('REPLACE_') === 0 || unset.length) {
+    alert('尚未設定表單對應，無法送出。\n\n請先執行 create-form.gs 的 buildAll()，'
+        + '把執行紀錄印出的 FORM_ID 與 ENTRY 貼進本檔。\n\n未設定：'
+        + (FORM_ID.indexOf('REPLACE_') === 0 ? 'FORM_ID ' : '') + unset.join(' '));
+    return;
+  }
+
+  if (noteSubmitted) {
+    alert('這筆已經送出過了，不再重複送出。\n（要送新的一筆，請回輸入面板重新「產生病歷文字」。）');
+    return;
+  }
+
+  const built = buildFormParams();
+  if (!built) return;  // 必填未過，只複製不送出
+
+  if (!confirm('確認將「' + built.name + '」這筆送出到「*體重維持紀錄」？\n會新增一筆回覆，送出後無法自動撤回。')) return;
+
+  fetch('https://docs.google.com/forms/d/e/' + FORM_ID + '/formResponse',
+        { method: 'POST', mode: 'no-cors', keepalive: true, body: built.params })
+    .then(() => { noteSubmitted = true; alert('已送出，表單新增一筆回覆！'); })
+    .catch(() => { alert('送出失敗（可能是網路問題）。貼稿已複製，資料未送出，請稍後再試。'); });
+}
+
+onDrugChange();
+</script>
+</body>
+</html>

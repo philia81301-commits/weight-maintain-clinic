@@ -1,0 +1,10 @@
+# 臨床資料一律不進版控（這個 repo 之後會是公開的）
+_local/
+*.xls
+*.xlsx
+*.csv
+
+# 系統
+Thumbs.db
+desktop.ini
+.DS_Store
