@@ -114,6 +114,7 @@ function buildAll() {
   buildHistorySheet(ss, respName, C);
   buildSummarySheet(ss, respName, C);
   addHistoryPickers(ss);
+  applyDateFormats(ss, respSheet, C);
   removeDefaultSheet(ss, respName);
 
   // ---- 搬進「門診工具-正式運作中」----
@@ -401,6 +402,93 @@ function removeDefaultSheet(ss, respName) {
 }
 
 /**
+ * 統一日期顯示格式為 yyyy/mm/dd。
+ *
+ * 回應分頁的日期欄從來沒設過格式，會跟著試算表的地區設定走；建檔時 locale 是美國，
+ * 於是 Timestamp 與「回診日期」顯示成 8/18/2026、9/4/2025 這種 M/D/YYYY，
+ * 和輸入工具、個案歷程、個案總表的 YYYY/MM/DD 對不起來（2026-08-19 使用者反映）。
+ *
+ * 這是純顯示問題——儲存格裡是日期序列值，數值本身沒錯，統計也沒算錯。
+ * 但門診當下人眼要核對「3/4」是三月四日還是四月三日，光靠猜很容易看錯；
+ * 且日後要把本表與減重門診那份回覆表合併分析，兩邊格式一致才不用在併表時再對一次。
+ *
+ * 兩層一起做：
+ *   1. 試算表 locale 改 zh_TW、時區 Asia/Taipei —— 根本解，之後新增的欄位預設就對。
+ *      （zh_TW 的公式參數分隔符仍是逗號，既有公式不受影響。）
+ *      時區一致也很重要：兩表併分析時，時區不同會讓同一天的紀錄差一天。
+ *   2. 明確對兩個日期欄設 numberFormat —— locale 只改「預設」，已存在的欄位要另外設。
+ *
+ * 範圍設到 getMaxRows()，涵蓋尚未使用的空白列，表單新增回覆時會沿用該欄格式。
+ */
+function applyDateFormats(ss, respSheet, C) {
+  var TZ = 'Asia/Taipei';
+  if (ss.getSpreadsheetLocale() !== 'zh_TW') {
+    Logger.log('試算表 locale：' + ss.getSpreadsheetLocale() + ' → zh_TW');
+    ss.setSpreadsheetLocale('zh_TW');
+  }
+  if (ss.getSpreadsheetTimeZone() !== TZ) {
+    Logger.log('試算表時區：' + ss.getSpreadsheetTimeZone() + ' → ' + TZ);
+    ss.setSpreadsheetTimeZone(TZ);
+  }
+
+  var rows = respSheet.getMaxRows() - 1;   // 扣掉表頭列
+  if (rows < 1) return;
+
+  // Timestamp 一定在 A 欄（表單寫入的固定位置），但仍照 colMap 的結果取，不寫死。
+  var tsCol = C['Timestamp'] || C['時間戳記'] || 1;
+  respSheet.getRange(2, tsCol, rows, 1).setNumberFormat('yyyy/mm/dd hh:mm:ss');
+  Logger.log('已設定 ' + colLetter(tsCol) + ' 欄（送出時間）為 yyyy/mm/dd hh:mm:ss');
+
+  if (C['回診日期']) {
+    respSheet.getRange(2, C['回診日期'], rows, 1).setNumberFormat('yyyy/mm/dd');
+    Logger.log('已設定 ' + colLetter(C['回診日期']) + ' 欄（回診日期）為 yyyy/mm/dd');
+  } else {
+    Logger.log('！回應分頁沒有「回診日期」欄，略過該欄格式設定。');
+  }
+}
+
+/**
+ * 把「*減重評估表 (回覆)」的時間戳記也統一成 yyyy/mm/dd hh:mm:ss。
+ *
+ * 為什麼要動另一份表：兩份回覆表日後要合併做分析（2026-08-19 使用者指示）。
+ * 那份表的 locale 已是 zh_TW，日期排列本來就是年/月/日，但用的是 zh_TW 預設格式
+ * 「2025/9/25 下午 1:41:34」——月日不補零、中文 12 小時制。
+ *
+ * 合併分析時這會有兩個實際麻煩：
+ *   1. 匯出 CSV 後用程式解析，「下午 1:41:34」不是標準時間字串，得另外寫剖析規則。
+ *   2. 肉眼核對兩表時，一邊 2025/9/25、一邊 2026/08/18，對齊起來要多想一秒。
+ * 補零的 24 小時制兩邊都適用，故統一成同一種。
+ *
+ * 這支**只改顯示格式**，不動任何資料、不建也不刪分頁。儲存格裡是日期序列值，
+ * 改格式不會改變值，減重門診的月度統計不受影響。
+ *
+ * 要在門診分析真正合併前跑過一次；本專案的 repair() 不會連帶執行它（不同檔案，
+ * 刻意分開，避免修本工具時意外動到門診那份正式資料）。
+ */
+function alignAssessmentSheetDates() {
+  var SS_ID = '1VjST7r22TwcxGVsNhpRF_1-O25vCPnCf35ie3myvfaY'; // 我的雲端硬碟／門診工具-正式運作中／*減重評估表 (回覆)
+  var ss = SpreadsheetApp.openById(SS_ID);
+  var sh = findResponseSheet(ss);
+  var C  = colMap(sh);
+
+  var tsCol = C['時間戳記'] || C['Timestamp'];
+  if (!tsCol) {
+    throw new Error('找不到時間戳記欄。目前表頭：' + Object.keys(C).join('、'));
+  }
+
+  var rows = sh.getMaxRows() - 1;
+  var before = sh.getRange(2, tsCol, 1, 1).getDisplayValue();
+
+  sh.getRange(2, tsCol, rows, 1).setNumberFormat('yyyy/mm/dd hh:mm:ss');
+  SpreadsheetApp.flush();
+
+  Logger.log('分頁「' + sh.getName() + '」' + colLetter(tsCol) + ' 欄（時間戳記）');
+  Logger.log('  改前第一列顯示：' + before);
+  Logger.log('  改後第一列顯示：' + sh.getRange(2, tsCol, 1, 1).getDisplayValue());
+  Logger.log('完成。只改了顯示格式，資料未更動。');
+}
+
+/**
  * 修復已經建好的試算表：重建個案歷程／個案總表，指向正確的回應分頁。
  * SS_ID 已填好本專案的回覆試算表，直接執行 repair() 即可。
  */
@@ -420,6 +508,7 @@ function repair() {
   buildHistorySheet(ss, respName, C);
   buildSummarySheet(ss, respName, C);
   addHistoryPickers(ss);
+  applyDateFormats(ss, respSheet, C);
   removeDefaultSheet(ss, respName);
   Logger.log('修復完成。分頁現況：' + ss.getSheets().map(function(s){return s.getName();}).join('、'));
 }
@@ -469,6 +558,7 @@ function reorderFields() {
   buildHistorySheet(ss, respName, C);
   buildSummarySheet(ss, respName, C);
   addHistoryPickers(ss);
+  applyDateFormats(ss, respSheet, C);
   Logger.log('分析分頁已依實際欄位順序重建完成。');
 }
 
@@ -543,5 +633,6 @@ function addVisitDateField() {
   buildHistorySheet(ss, respName, C);
   buildSummarySheet(ss, respName, C);
   addHistoryPickers(ss);
+  applyDateFormats(ss, respSheet, C);
   Logger.log('分析分頁重建完成。');
 }
