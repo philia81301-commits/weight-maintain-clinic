@@ -83,7 +83,7 @@
 ## 🕐 最後更新
 
 2026-08-21 · Claude Fable 5 @ `X108521` · 歷程圖 Y 軸完工（addChart＋onEdit 觸發器，
-驗收通過）· Git push：待推
+驗收通過）· Git push：✅ 已推（95c4b2c）
 2026-08-19 · Claude Opus 5 · 日期格式統一（見 `docs/google-form-fields.md` 末節）
 2026-08-18 · Claude Opus 5 @ `X108521` · Git push：✅ 已推
 
