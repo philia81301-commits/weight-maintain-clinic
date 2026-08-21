@@ -144,6 +144,31 @@ xls 每人也只存 v1／v2 兩個時間點，中間的回診沒有留下。
    **刻意不併進 `repair()`**——那是減重門診正式運作中的檔案，要單獨執行才不會誤觸。
    真正會讓合併靜默出錯的是**型別**（文字日期 vs 日期序列值），兩表目前都是序列值。
 
+9. **內嵌折線圖的 Y 軸不能用 `setOption` 設，要走 Sheets REST API**（2026-08-21 兩輪實測）。
+   `setOption('vAxis', {...})` 和網路上流傳的 `setOption('vAxes', { 0: {...} })`
+   **都被整包靜默忽略**——存進去不報錯，畫出來 viewWindowMode、title、gridlines
+   全沒生效（連 Y 軸標題都不出現）；`hAxis` 反而正常，極易誤判成「只是某個選項不吃」。
+   而且**也不能**「get 既有 spec → 改軸 → updateChartSpec 寫回」：實測寫回後
+   domains／series 被弄壞——體重序列消失、日期欄變成資料序列，圖轉九十度往上爬
+   （2026-08-21 13:55 實際發生，使用者抓到）。
+   正解：**整張圖直接用 Sheets 進階服務 `addChart` 從零建**，ChartSpec 全部自己定義
+   （domains＝A 欄日期、series＝B 欄體重），見 `historyChartSpec()`。
+   再一個坑中坑：`viewWindowMode: 'PRETTY'` **也是陽奉陰違**——API 收下、
+   畫出來仍從 0 起算（2026-08-21 14:08 實測）。真正有效的只有 `EXPLICIT`＋
+   明確上下限，而上下限每個個案不同，所以用安裝式 onEdit 觸發器
+   （`installHistoryTrigger`／`onHistoryPick`）在切換 B2/B3 時動態重算：
+   體重 min/max 留 1 kg 邊距後貼齊 5 的倍數。觸發器裝在建置腳本專案上，
+   repair 會自動安裝（有防重複），首次會多要 ScriptApp 授權。
+   ⚠️ 不能用 UrlFetchApp 打 REST：實測回 403 SERVICE_DISABLED——Apps Script 的
+   預設 GCP 專案沒開 Sheets API，預設專案又進不了 console 開通。
+   進階服務（編輯器左側「服務」→ ＋ → Google Sheets API）啟用時會自動開通，
+   設定存在 appsscript.json，重貼程式碼不會弄丟。
+   另外查證過：**官方 API 的 ChartSpec 完全沒有「主格線間距」欄位**
+   （BasicChartAxis 只有 position／title／format／titleTextPosition／viewWindowOptions），
+   「每 5 kg 一格」只能在圖表編輯器手動設（自訂 → 格線和刻度 → 垂直軸 →
+   主要間距類型改「步長」5），且 **repair 重建圖表後會被洗掉、要手動重設一次**。
+   每次改圖表軸設定，repair 後都要實際選一位個案目視確認。
+
 ## 環境
 
 - **Obsidian 詳細紀錄**：`C:\Users\office\OneDrive\2ndBrain\weight-maintain-clinic\專案工作流程.md`
@@ -167,6 +192,8 @@ Google Drive 一律走 MCP 連接器，不要預設 `G:\` 掛得起來。
 - [x] 新增「回診日期」欄，歷程改以實際回診日計算（補舊資料的前提）
 - [x] git init + GitHub repo + Pages 上線
 - [x] 端到端測試：送出 → 試算表出現 → 個案總表／個案歷程數字與折線圖正確
+- [x] 歷程圖 Y 軸改善：改用 Sheets API `addChart` 從零建圖＋onEdit 觸發器
+      動態設每位個案的 Y 軸範圍（貼齊 5 的倍數、每 5 kg 一格），2026-08-21 驗收通過
 - [ ] 實際門診使用一段時間，收集不順手之處再調整
 - [ ] （選配）是否把 xls 的 v1／v2 匯入成歷史底稿——見 `handoff.md`
 - [ ] （選配）建立 Obsidian L3 專案筆記

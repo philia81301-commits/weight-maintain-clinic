@@ -284,23 +284,141 @@ function buildHistorySheet(ss, respName, C) {
   sh.setColumnWidth(1, 110);
   sh.setFrozenRows(5);
 
-  var chart = sh.newChart()
-    .asLineChart()
-    .addRange(sh.getRange(5, 1, LAST - 4, 2))
-    // 放在 K 欄：A~I 是資料與計算欄，圖表壓在 F 欄會擋住
-    // 「與前次差／與首次差／累積減重%」三欄（2026-08-18 實際發生）
-    .setPosition(2, 11, 0, 0)
-    .setOption('title', '體重變化歷程')
-    .setOption('legend', { position: 'none' })
-    .setOption('width', 560)
-    .setOption('height', 320)
-    .setOption('pointSize', 6)
-    // Y 軸不從 0 起算：維持期的變化常只有幾公斤，
-    // 從 0 畫會壓成一條平線，看不出成效
-    .setOption('vAxis', { viewWindowMode: 'pretty', title: '體重 (kg)' })
-    .setOption('hAxis', { title: '回診日期' })
-    .build();
-  sh.insertChart(chart);
+  insertHistoryChart(sh, LAST);
+}
+
+/**
+ * 產生歷程折線圖的完整 ChartSpec：橫軸＝回診日期（A 欄）、資料序列＝體重（B 欄）。
+ * winMin／winMax 有給時，Y 軸用 EXPLICIT 明確上下限；給 null 則不設（Google 預設，
+ * 會從 0 起算）。**PRETTY 模式實測無效**——寫進去 Google 收下，畫出來仍是 0 起算
+ * （2026-08-21 14:08 實測），所以貼合資料只能靠 EXPLICIT＋onEdit 觸發器動態算（坑 9）。
+ *
+ * 為什麼整份 spec 自己定義、不用 EmbeddedChartBuilder 也不改既有 spec：
+ * - setOption 的 vAxis／vAxes 巢狀選項整包被靜默忽略（坑 9，兩輪實測）。
+ * - 「先 get 既有 spec、改一塊再 updateChartSpec 寫回」實測會把 domains／series
+ *   弄壞——體重序列消失、日期變成資料序列（圖轉九十度往上爬）。
+ *   規格全部自己給，addChart 與 updateChartSpec 都用同一份，才不會走樣。
+ */
+function historyChartSpec(sheetId, LAST, winMin, winMax) {
+  // GridRange 是 0-based、末端不含：第 5~LAST 列 → startRowIndex 4, endRowIndex LAST
+  var colRange = function (col) {
+    return { sheetId: sheetId, startRowIndex: 4, endRowIndex: LAST,
+             startColumnIndex: col, endColumnIndex: col + 1 };
+  };
+  var leftAxis = { position: 'LEFT_AXIS', title: '體重 (kg)' };
+  if (winMin !== null && winMax !== null) {
+    leftAxis.viewWindowOptions = {
+      viewWindowMode: 'EXPLICIT', viewWindowMin: winMin, viewWindowMax: winMax
+    };
+  }
+  return {
+    title: '體重變化歷程',
+    basicChart: {
+      chartType: 'LINE',
+      legendPosition: 'NO_LEGEND',
+      headerCount: 1,
+      axis: [ { position: 'BOTTOM_AXIS', title: '回診日期' }, leftAxis ],
+      domains: [{ domain: { sourceRange: { sources: [colRange(0)] } } }],
+      series: [{ series: { sourceRange: { sources: [colRange(1)] } },
+                 targetAxis: 'LEFT_AXIS',
+                 pointStyle: { size: 6, shape: 'CIRCLE' } }]
+    }
+  };
+}
+
+/**
+ * 用 Sheets API（進階服務）從零建立歷程折線圖。
+ * ⚠️ 需要啟用進階服務：編輯器左側「服務」→ ＋ → Google Sheets API → 新增
+ * （識別碼保持 Sheets）。UrlFetchApp 打 REST 會 403 SERVICE_DISABLED（預設 GCP
+ * 專案沒開 API 又進不去開），進階服務啟用時會自動開通。設定存在 appsscript.json，
+ * 重貼程式碼不會弄丟。失敗會寫進執行記錄——本專案鐵律：不接受靜默失敗。
+ */
+function insertHistoryChart(sh, LAST) {
+  if (typeof Sheets === 'undefined') {
+    Logger.log('！尚未啟用 Sheets 進階服務，這次沒有建圖表。');
+    Logger.log('！請在編輯器左側「服務」→ ＋ → Google Sheets API → 新增，再重跑 repair。');
+    return;
+  }
+  var req = {
+    addChart: {
+      chart: {
+        spec: historyChartSpec(sh.getSheetId(), LAST, null, null),
+        // 放在 K2：A~I 是資料與計算欄，圖表壓在 F 欄會擋住
+        // 「與前次差／與首次差／累積減重%」三欄（2026-08-18 實際發生）
+        position: {
+          overlayPosition: {
+            anchorCell: { sheetId: sh.getSheetId(), rowIndex: 1, columnIndex: 10 },
+            widthPixels: 560, heightPixels: 320
+          }
+        }
+      }
+    }
+  };
+  try {
+    Sheets.Spreadsheets.batchUpdate({ requests: [req] }, sh.getParent().getId());
+    Logger.log('已建立歷程圖：日期橫軸／體重直軸。Y 軸範圍由觸發器在切換個案時動態設定。');
+  } catch (e) {
+    Logger.log('！建立歷程圖失敗：' + e.message);
+  }
+}
+
+/**
+ * onEdit 觸發器本體：在個案歷程切換姓名（B2）或出生年（B3）時，
+ * 依該個案的體重範圍動態設定 Y 軸上下限（貼齊 5 的倍數、留 1 kg 邊距），
+ * 這樣格線自然落在 5 的倍數上，也不會從 0 起算把線壓平。
+ * 由 installHistoryTrigger() 安裝，不要直接手動執行（沒有事件參數會直接 return）。
+ */
+function onHistoryPick(e) {
+  try {
+    if (!e || !e.range) return;
+    var sh = e.range.getSheet();
+    if (sh.getName() !== '個案歷程') return;
+    var a1 = e.range.getA1Notation();
+    if (a1 !== 'B2' && a1 !== 'B3') return;
+    updateHistoryChartWindow(sh);
+  } catch (err) {
+    console.error('onHistoryPick 失敗：' + err.message);
+  }
+}
+
+/** 依目前選到的個案體重，重算 Y 軸上下限並更新圖表（spec 一律重新產生，不讀回改寫）。 */
+function updateHistoryChartWindow(sh) {
+  if (typeof Sheets === 'undefined') return;
+  var LAST = 105;
+  SpreadsheetApp.flush(); // 等 FILTER 公式算完再讀，避免拿到舊個案的數字
+  var weights = sh.getRange(6, 2, LAST - 5, 1).getValues()
+    .map(function (r) { return r[0]; })
+    .filter(function (v) { return typeof v === 'number' && v > 0; });
+  var charts = sh.getCharts();
+  if (!charts.length) return;
+
+  var winMin = null, winMax = null;
+  if (weights.length) {
+    var mn = Math.min.apply(null, weights), mx = Math.max.apply(null, weights);
+    winMin = Math.floor((mn - 1) / 5) * 5;   // 留 1 kg 邊距後貼齊 5 的倍數
+    winMax = Math.ceil((mx + 1) / 5) * 5;
+    if (winMax - winMin < 10) { winMin -= 5; winMax += 5; } // 範圍太窄會把量測誤差放大成大起伏
+  }
+  Sheets.Spreadsheets.batchUpdate(
+    { requests: [{ updateChartSpec: {
+        chartId: charts[0].getChartId(),
+        spec: historyChartSpec(sh.getSheetId(), LAST, winMin, winMax)
+      } }] },
+    sh.getParent().getId());
+}
+
+/**
+ * 安裝「切換個案 → 自動調 Y 軸」的 onEdit 觸發器（repair 會自動呼叫，可重複執行）。
+ * 獨立專案不能用簡單觸發器，必須用 ScriptApp 安裝式觸發器；
+ * 先檢查再建，避免 repair 跑幾次就疊幾個觸發器。
+ */
+function installHistoryTrigger(ssId) {
+  var exists = ScriptApp.getProjectTriggers().some(function (t) {
+    return t.getHandlerFunction() === 'onHistoryPick';
+  });
+  if (exists) { Logger.log('onEdit 觸發器已存在，不重複安裝'); return; }
+  ScriptApp.newTrigger('onHistoryPick').forSpreadsheet(ssId).onEdit().create();
+  Logger.log('已安裝 onEdit 觸發器：切換個案時自動調整 Y 軸範圍');
 }
 
 /**
@@ -510,6 +628,7 @@ function repair() {
   addHistoryPickers(ss);
   applyDateFormats(ss, respSheet, C);
   removeDefaultSheet(ss, respName);
+  installHistoryTrigger(SS_ID);
   Logger.log('修復完成。分頁現況：' + ss.getSheets().map(function(s){return s.getName();}).join('、'));
 }
 
